@@ -1462,10 +1462,11 @@ Dygraph.prototype.eventToDomCoords = function(event) {
 /**
  * Given a canvas X coordinate, find the closest row.
  * @param {number} domX graph-relative DOM X coordinate
+ * @param {number} domY graph-relative DOM Y coordinate
  * Returns {number} row number.
  * @private
  */
-Dygraph.prototype.findClosestRow = function(domX) {
+Dygraph.prototype.findClosestRow = function (domX, domY) {
   var minDistX = Infinity;
   var closestRow = -1;
   var sets = this.layout_.points;
@@ -1483,7 +1484,27 @@ Dygraph.prototype.findClosestRow = function(domX) {
     }
   }
 
-  return closestRow;
+  var minDistY = Infinity;
+  var closestSet = -1;
+  for (var i = 0; i < sets.length; i++) {
+    var points = sets[i];
+    var len = points.length;
+    for (var j = 0; j < len; j++) {
+      var point = points[j];
+      if (!utils.isValidPoint(point, true)) continue;
+      if (point.idx !== closestRow) continue;
+      var dist = Math.abs(point.canvasy - domY);
+      if (dist < minDistY) {
+        minDistY = dist;
+        closestSet = i;
+      }
+    }
+  }
+
+  return {
+    row: closestRow,
+    series: this.layout_.setNames[closestSet]
+  };
 };
 
 /**
@@ -1538,7 +1559,7 @@ Dygraph.prototype.findClosestPoint = function(domX, domY) {
  * @private
  */
 Dygraph.prototype.findStackedPoint = function(domX, domY) {
-  var row = this.findClosestRow(domX);
+  var row = this.findClosestRow(domX, domY).row;
   var closestPoint, closestSeries;
   for (var setIdx = 0; setIdx < this.layout_.points.length; ++setIdx) {
     var boundary = this.getLeftBoundary_(setIdx);
@@ -1599,19 +1620,12 @@ Dygraph.prototype.mouseMove_ = function(event) {
   var canvasx = canvasCoords[0];
   var canvasy = canvasCoords[1];
 
-  var highlightSeriesOpts = this.getOption("highlightSeriesOpts");
   var selectionChanged = false;
-  if (highlightSeriesOpts && !this.isSeriesLocked()) {
-    var closest;
-    if (this.getBooleanOption("stackedGraph")) {
-      closest = this.findStackedPoint(canvasx, canvasy);
-    } else {
-      closest = this.findClosestPoint(canvasx, canvasy);
-    }
-    selectionChanged = this.setSelection(closest.row, closest.seriesName);
+  var { row, series } = this.findClosestRow(canvasx, canvasy);
+  if (this.isSeriesLocked()) {
+    selectionChanged = this.setSelection(row);
   } else {
-    var idx = this.findClosestRow(canvasx);
-    selectionChanged = this.setSelection(idx);
+    selectionChanged = this.setSelection(row, series);
   }
 
   var callback = this.getFunctionOption("highlightCallback");
